@@ -1,0 +1,59 @@
+# テスト(PR と main)と、main へのマージ後のデプロイ(environment `production` の承認後だけ)。
+# 承認は GitHub の Web から当社の運営者が行う(Required reviewers)。開発機・Claude Code からは承認もデプロイもしない。
+# デプロイ用の CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID は environment secret にだけ置く(リポジトリの secret には置かない)。
+# 外部の Action はコミットの SHA で固定する(タグの付け替えで中身が変わらないように)。
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - run: npx wrangler deploy --dry-run --outdir .wrangler/dry-run
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # 承認待ちで止まる。承認の画面から対象のコミットの差分を確認してから承認する
+    environment: production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: npm ci --ignore-scripts
+      - name: D1 のマイグレーション
+        run: npx wrangler d1 migrations apply kintauros-mypage-vault --remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: デプロイ
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: 死活確認
+        run: curl -fsS --retry 5 --retry-delay 3 https://api.kintauros-vault.com/health

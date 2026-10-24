@@ -1,0 +1,48 @@
+# KINTAUROS マイページ 保管庫(mypage-vault)
+# デプロイは GitHub Actions(.github/workflows/ci.yml)の environment `production` の承認後だけ。開発機からは wrangler deploy しない。
+# account_id は書かない(Actions が environment secret の CLOUDFLARE_ACCOUNT_ID を渡す)。
+# 公開リポジトリなので、秘密の値・異常を検知する量の上限の値はここに書かない(シークレットと、ダッシュボードで設定する環境変数)。
+name = "kintauros-mypage-vault"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+workers_dev = false
+# ダッシュボードで設定した環境変数(量の上限など)をデプロイで消さない
+keep_vars = true
+
+# 専用ゾーン kintauros-vault.com(保管庫のアカウント)。api の DNS レコード(プロキシ有効)はダッシュボードで作る
+routes = [
+  { pattern = "api.kintauros-vault.com/*", zone_name = "kintauros-vault.com" }
+]
+
+# 保管庫のアカウントで作った D1。ID はダッシュボードで作成後に差し替える(秘密ではない)
+[[d1_databases]]
+binding = "DB"
+database_name = "kintauros-mypage-vault"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+# サイトごとの Durable Object(kintone への同時接続とアプリごとの日次回数。src/gate.js)
+[[durable_objects.bindings]]
+name = "SITE_GATE"
+class_name = "SiteGate"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SiteGate"]
+
+# 日次: 一時データの掃除・ライセンスの再確認・トークンの権限の再検証(00:45 UTC = 09:45 JST)
+[triggers]
+crons = ["45 0 * * *"]
+
+[vars]
+LICENSE_API_BASE = "https://api.kintauros.com"
+# 管理 API のホスト(状態の apiBase に返す)
+API_HOST = "api.kintauros-vault.com"
+# メンバーの画面のドメイン(サイト・ページの URL を組み立てる。画面側 mypage-worker)
+PUBLIC_BASE_DOMAIN = "kintauros.me"
+# Google・LINE のリダイレクト先(画面側。設計 V4: 今のまま)
+AUTH_HOST = "auth.kintauros.me"
+
+# シークレット(値はリポジトリに書かない。保管庫のアカウントのダッシュボード Workers → kintauros-mypage-vault → Settings で登録):
+#   VAULT_KEK - ページ DEK・サイト DEK を包む鍵(base64 の 32 バイト。`openssl rand -base64 32`)。未設定だと登録は 503
+#               変えると保管庫の全トークン・LINE のシークレットが復号できなくなるので再生成しない

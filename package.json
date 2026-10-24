@@ -1,0 +1,22 @@
+{
+  "name": "kintauros-mypage-vault",
+  "private": true,
+  "type": "module",
+  "description": "KINTAUROS マイページ 保管庫 — API トークンと本人確認の秘密を持つ Worker (Cloudflare Workers + D1 + Durable Objects)",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "dev": "wrangler dev --local --config wrangler.local.toml --port 8789",
+    "migrate:local": "wrangler d1 migrations apply kintauros-mypage-vault --local --config wrangler.local.toml",
+    "check": "wrangler deploy --dry-run --outdir .wrangler/dry-run"
+  },
+  "dependencies": {
+    "qrcode-generator": "2.0.4"
+  },
+  "devDependencies": {
+    "vitest": "3.2.7",
+    "wrangler": "4.118.0"
+  }
+}
