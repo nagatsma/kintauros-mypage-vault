@@ -14,11 +14,11 @@ routes = [
   { pattern = "api.kintauros-vault.com/*", zone_name = "kintauros-vault.com" }
 ]
 
-# 保管庫のアカウントで作った D1。ID はダッシュボードで作成後に差し替える(秘密ではない)
+# 保管庫のアカウントで作った D1(2026-10-25 作成。ID は秘密ではない)
 [[d1_databases]]
 binding = "DB"
 database_name = "kintauros-mypage-vault"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "ddc02773-f85e-46f1-aa23-77d9302a83d1"
 migrations_dir = "migrations"
 
 # サイトごとの Durable Object(kintone への同時接続とアプリごとの日次回数。src/gate.js)
