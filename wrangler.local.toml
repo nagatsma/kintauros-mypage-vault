@@ -1,0 +1,30 @@
+# ローカル検証用(npm run dev = wrangler dev --local --config wrangler.local.toml --port 8789)。本番設定は wrangler.toml。
+# 違い: ルートなし / D1 はローカル / LICENSE_API_BASE をライセンスのスタブ(port 9999)に向ける。
+# KEK は .dev.vars に置く(gitignore 済み): echo "VAULT_KEK=$(openssl rand -base64 32)" > .dev.vars
+name = "kintauros-mypage-vault"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+workers_dev = false
+
+[[d1_databases]]
+binding = "DB"
+database_name = "kintauros-mypage-vault"
+database_id = "local-mypage-vault"
+migrations_dir = "migrations"
+
+[[durable_objects.bindings]]
+name = "SITE_GATE"
+class_name = "SiteGate"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SiteGate"]
+
+[triggers]
+crons = ["45 0 * * *"]
+
+[vars]
+LICENSE_API_BASE = "http://localhost:9999"
+API_HOST = "localhost:8789"
+PUBLIC_BASE_DOMAIN = "kintauros.me"
+AUTH_HOST = "auth.kintauros.me"
