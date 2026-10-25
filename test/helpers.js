@@ -23,8 +23,16 @@ export function createD1() {
   };
 }
 
-// kintone の代役。perms: トークンごとに { read, edit, del, manage, add }。reachable: false なら接続できない
-export function fakeKintone({ perms = {}, reachable = true, fields = { 数値: { type: 'NUMBER', code: '数値', label: '数値' }, メール: { type: 'SINGLE_LINE_TEXT', code: 'メール', label: 'メール' } } } = {}) {
+// 本物の D1 のように 1 回ごとに待ち時間を入れる(並列の呼び出しが交互に進むので、「読んでから書く」競合を再現できる)
+export function slowD1(db) {
+  const wait = () => new Promise((r) => setTimeout(r, Math.random() * 3));
+  const slow = (st) => ({ first: async () => (await wait(), st.first()), all: async () => (await wait(), st.all()), run: async () => (await wait(), st.run()) });
+  return { ...db, prepare: (sql) => { const p = db.prepare(sql); return { ...slow(p), bind: (...a) => slow(p.bind(...a)) }; } };
+}
+
+// kintone の代役。perms: トークンごとに { read, edit, del, manage, add }。reachable: false なら接続できない。
+//   records: GET records.json が返すレコード(クエリは見ない。保管庫が取得後に再照合する)。指定すると、その中のレコード番号への PUT は 200
+export function fakeKintone({ perms = {}, reachable = true, records = null, fields = { 数値: { type: 'NUMBER', code: '数値', label: '数値' }, メール: { type: 'SINGLE_LINE_TEXT', code: 'メール', label: 'メール' } } } = {}) {
   const calls = [];
   const res = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
   const denied = () => res(403, { code: 'GAIA_NO01', message: 'denied' });
@@ -32,13 +40,17 @@ export function fakeKintone({ perms = {}, reachable = true, fields = { 数値: {
     const u = new URL(url);
     const method = (init.method || 'GET').toUpperCase();
     const token = new Headers(init.headers).get('X-Cybozu-API-Token');
-    calls.push({ method, path: u.pathname, host: u.hostname });
+    calls.push({ method, path: u.pathname, host: u.hostname, query: u.searchParams.get('query'), body: typeof init.body === 'string' ? JSON.parse(init.body) : null });
     if (!reachable) throw new Error('network down');
     const p = perms[token];
     if (!p) return res(401, { code: 'CB_AU01', message: 'invalid token' });
     const path = u.pathname.replace(/^\/k\/v1\//, '');
-    if (method === 'GET' && path === 'records.json') return p.read ? res(200, { records: [], totalCount: '0' }) : denied();
-    if (method === 'PUT' && path === 'record.json') return p.edit ? res(404, { code: 'GAIA_RE01' }) : denied();
+    if (method === 'GET' && path === 'records.json') return p.read ? res(200, { records: records || [], totalCount: String((records || []).length) }) : denied();
+    if (method === 'PUT' && path === 'record.json') {
+      if (!p.edit) return denied();
+      const id = JSON.parse(init.body || '{}').id;
+      return records && records.some((r) => String(r.$id.value) === String(id)) ? res(200, { revision: '2' }) : res(404, { code: 'GAIA_RE01' });
+    }
     if (method === 'DELETE' && path === 'records.json') return p.del ? res(404, { code: 'GAIA_RE01' }) : denied();
     if (method === 'GET' && path === 'preview/app/form/fields.json') return p.manage ? res(200, { properties: fields }) : denied();
     if (method === 'GET' && path === 'app/form/fields.json') return p.read ? res(200, { properties: fields }) : denied();
@@ -66,8 +78,9 @@ export function fakeGate(kintone) {
 export const KEK = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))));
 export const keyOf = (id) => `k${id.replace(/-/g, '')}`; // 32 文字以上のページ鍵
 
+export const FRONT_KEY = 'front-key-for-tests-0000000000000000000000';
 export function envOf(db, kintone = fakeKintone(), extra = {}) {
-  return { DB: db, SITE_GATE: fakeGate(kintone), VAULT_KEK: extra.VAULT_KEK || KEK(), API_HOST: 'api.kintauros-vault.com', AUTH_HOST: 'auth.kintauros.me', PUBLIC_BASE_DOMAIN: 'kintauros.me', LICENSE_API_BASE: 'https://license.test', ...extra };
+  return { DB: db, SITE_GATE: fakeGate(kintone), VAULT_KEK: extra.VAULT_KEK || KEK(), VAULT_SESSION_KEY: KEK(), VAULT_FRONT_KEY: FRONT_KEY, API_HOST: 'api.kintauros-vault.com', AUTH_HOST: 'auth.kintauros.me', PUBLIC_BASE_DOMAIN: 'kintauros.me', LICENSE_API_BASE: 'https://license.test', ...extra };
 }
 
 export const ctx = { waitUntil: () => {} };
@@ -79,6 +92,20 @@ export async function call(worker, env, method, path, { key, body, origin } = {}
   if (key) headers['X-Kintauros-Mypage-Key'] = key;
   if (origin) headers.Origin = origin;
   const res = await worker.fetch(new Request(`https://api.kintauros-vault.com${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }), env, ctx);
+  const text = await res.text();
+  let json = null;
+  try { json = JSON.parse(text); } catch { /* 本文なし */ }
+  return { status: res.status, body: json, text, headers: res.headers };
+}
+
+// メンバー向け API(/v1)を画面側として呼ぶ。応答は { status, body, text }
+export async function v1(worker, env, method, path, { host = 'sample.kintauros.me', session, body, frontKey = FRONT_KEY, ip = '203.0.113.1', ctx: c = ctx } = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (frontKey) headers['X-Mypage-Front-Key'] = frontKey;
+  if (host) headers['X-Mypage-Host'] = host;
+  if (session) headers['X-Mypage-Session'] = session;
+  if (ip) headers['X-Mypage-Client-IP'] = ip;
+  const res = await worker.fetch(new Request(`https://api.kintauros-vault.com${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }), env, c);
   const text = await res.text();
   let json = null;
   try { json = JSON.parse(text); } catch { /* 本文なし */ }

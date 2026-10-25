@@ -1,7 +1,8 @@
 // 保管庫の暗号化・署名(実装は src/kit/crypto.js)。
 //   KEK: Worker シークレット VAULT_KEK(base64 の 32 バイト)。ページ DEK(API トークン)・サイト DEK(LINE のシークレット)を包む。
 //        保管庫のアカウントにだけ置く(画面側の MYPAGE_KEK とは別の値。変えると保管庫の全トークンが復号できなくなる)
-//   HMAC(用途ごとに鍵を分ける): 確認コード / 受け渡しコード / Cookie の署名 / state / 添付の識別子 / アドレス・IP のハッシュ
+//   HMAC(用途ごとに鍵を分ける): 確認コード・OAuth の state のハッシュ / 添付の識別子 / アドレス・IP のハッシュ。
+//   メンバーのセッションと自己登録のトークンは KEK とは別のシークレット VAULT_SESSION_KEY で署名する(session.js。入れ替えられるように)
 import { createEnvelope, decryptJson, encryptJson } from './kit/crypto.js';
 
 const envelope = createEnvelope({ kekVar: 'VAULT_KEK', hmacInfo: 'kintauros-mypage/hash' });
@@ -40,7 +41,7 @@ export async function decryptToken(env, wrapped, enc) {
   return obj && typeof obj.token === 'string' ? obj.token : null;
 }
 
-// ---- 署名付きの値(base64url(JSON) + '.' + HMAC)。Cookie・state・添付の識別子に使う ----
+// ---- 署名付きの値(base64url(JSON) + '.' + HMAC)。添付の識別子などに使う。メンバーのセッションは session.js(別の鍵)----
 const te = new TextEncoder();
 const td = new TextDecoder();
 const b64urlEncode = (bytes) => {
@@ -54,27 +55,36 @@ const b64urlDecode = (text) => {
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 };
-export async function sign(env, obj, info) {
-  const payload = b64urlEncode(te.encode(JSON.stringify(obj)));
-  const sig = await hmacB64url(env, payload, info);
-  return `${payload}.${sig}`;
+// hmac(env, text, info) → base64url の署名。鍵ごとに sign / verify の組を作る
+export function createSigner(hmac) {
+  return {
+    async sign(env, obj, info) {
+      const payload = b64urlEncode(te.encode(JSON.stringify(obj)));
+      const sig = await hmac(env, payload, info);
+      return `${payload}.${sig}`;
+    },
+    // 戻り値: obj | null(改ざん・形式違い)。期限は呼び出し側が exp で判定する
+    async verify(env, text, info) {
+      if (typeof text !== 'string' || text.length > 8192) return null;
+      const i = text.indexOf('.');
+      if (i <= 0) return null;
+      const payload = text.slice(0, i);
+      const sig = text.slice(i + 1);
+      if (!/^[A-Za-z0-9_-]+$/.test(payload) || !/^[A-Za-z0-9_-]{43}$/.test(sig)) return null;
+      const expected = await hmac(env, payload, info);
+      if (!constantEqual(expected, sig)) return null;
+      try {
+        const obj = JSON.parse(td.decode(b64urlDecode(payload)));
+        return obj && typeof obj === 'object' && !Array.isArray(obj) ? obj : null;
+      } catch {
+        return null;
+      }
+    },
+  };
 }
-// 戻り値: obj | null(改ざん・形式違い)。期限は呼び出し側が exp で判定する
-export async function verify(env, text, info) {
-  if (typeof text !== 'string' || text.length > 8192) return null;
-  const i = text.indexOf('.');
-  if (i <= 0) return null;
-  const payload = text.slice(0, i);
-  const sig = text.slice(i + 1);
-  if (!/^[A-Za-z0-9_-]+$/.test(payload) || !/^[A-Za-z0-9_-]{43}$/.test(sig)) return null;
-  const expected = await hmacB64url(env, payload, info);
-  if (!constantEqual(expected, sig)) return null;
-  try {
-    return JSON.parse(td.decode(b64urlDecode(payload)));
-  } catch {
-    return null;
-  }
-}
+const kekSigner = createSigner(hmacB64url);
+export const sign = kekSigner.sign;
+export const verify = kekSigner.verify;
 function constantEqual(a, b) {
   if (a.length !== b.length) return false;
   let d = 0;

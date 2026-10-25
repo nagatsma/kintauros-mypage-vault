@@ -1,6 +1,6 @@
 // KINTAUROS マイページ 保管庫の定数(mypage-worker の config.js と同じ値。P4 で画面側から消すまで両方にある)。
-// 異常を検知する量の上限(1 セッションの取得件数など。設計 §6.2-5)はここに書かない — 公開リポジトリなので、
-// 値は保管庫の Worker の環境変数(ダッシュボードで設定。wrangler.toml の keep_vars で保持)から読む(P4)
+// 異常を検知する量の上限(1 セッションの取得件数など。設計 §6.2-5)の値はここに書かない — 公開リポジトリなので、
+// 値は保管庫の Worker の環境変数(ダッシュボードで設定。wrangler.toml の keep_vars で保持)から読む(LIMIT_VARS)
 
 export const MYPAGE_PLUGIN_ID = 'mypage'; // license-api の PLUGINS / plans(M3 で PLANS.mypage を追加)
 
@@ -25,7 +25,13 @@ export const SESSION_DAYS_MIN = 1;
 export const SESSION_DAYS_MAX = 180;
 export const SESSION_RENEW_AFTER_MS = 24 * 60 * 60 * 1000; // 使うたびに延長(1 日 1 回書き直す)
 export const MENU_REFRESH_MS = 24 * 60 * 60 * 1000;    // メニュー(入れるページの一覧)の確認は 1 日 1 回
-export const LOGIN_ATTEMPTS_PER_IP_10MIN = 60;         // ログイン画面の POST(IP の HMAC で数える)
+export const LOGIN_ATTEMPTS_PER_IP_10MIN = 60;         // ログイン画面の POST(IP の HMAC で数える。IP は画面側が渡す値なので目安)
+export const EMAIL_CODE_TRIES_PER_ADDRESS_HOUR = 10;   // 同じアドレスの確認コードの照合の回数(コードをまたいで数える。総当たりの上限)
+export const OAUTH_BIND_MIN = 32;                      // OAuth の開始時に返すブラウザとの結び付けの値の長さ(画面側が auth ホストの Cookie に入れる)
+// 異常を検知する量の上限(設計 §6.2-5)は環境変数(ダッシュボードで設定。未設定なら検査しない)。名前だけここに書く
+export const LIMIT_VARS = {
+  codeFailsPerSiteHour: 'LIMIT_CODE_FAILS_PER_SITE_HOUR', // サイト全体の 1 時間の確認コードの照合の失敗数。超えたらそのサイトの照合を止める(通知は P4)
+};
 
 // kintone の API 上限を食いつぶさない(設計 §4.6.3)
 export const SITE_CONCURRENCY = 10;                    // サイト(ドメイン)ごとの同時接続

@@ -107,6 +107,15 @@ export async function getCode(db, id, kind) {
 export async function bumpCodeAttempts(db, id) {
   await db.prepare('UPDATE codes SET attempts = attempts + 1 WHERE id = ?').bind(id).run();
 }
+// 照合の 1 回分を確保する(原子的。並列に送られても上限を超えない)。戻り値: { attempts }(確保後の回数)| null(上限)
+export async function reserveCodeAttempt(db, id, max) {
+  return db.prepare('UPDATE codes SET attempts = attempts + 1 WHERE id = ? AND attempts < ? RETURNING attempts').bind(id, max).first();
+}
+// 取り出して消す(1 回限り。並列でも 1 つだけが受け取る)
+export async function takeCode(db, id, kind) {
+  const row = await db.prepare('DELETE FROM codes WHERE id = ? AND kind = ? RETURNING *').bind(id, kind).first();
+  return row ? { ...row, data: safeJsonParse(row.data, {}) } : null;
+}
 export async function deleteCode(db, id) {
   await db.prepare('DELETE FROM codes WHERE id = ?').bind(id).run();
 }
@@ -138,7 +147,7 @@ export async function logOp(db, siteId, pageId, actor, action, detail) {
     .bind(siteId, pageId || null, actor, action, detail ? JSON.stringify(detail) : null, nowIso()).run();
 }
 
-// 日次の掃除(期限切れコード・古いレート制限・古いログ・前々月の MAU)
+// 日次の掃除(期限切れコード・古いレート制限・古いログ・前々月の MAU・期限の過ぎたログアウトの記録)
 export async function cleanup(db) {
   const now = new Date();
   const prev = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)).toISOString().slice(0, 7);
@@ -147,6 +156,7 @@ export async function cleanup(db) {
     db.prepare('DELETE FROM rate_events WHERE at < ?').bind(new Date(now.getTime() - RATE_EVENTS_KEEP_MS).toISOString()),
     db.prepare('DELETE FROM ops_log WHERE at < ?').bind(new Date(now.getTime() - OPS_LOG_KEEP_DAYS * 24 * 60 * 60 * 1000).toISOString()),
     db.prepare('DELETE FROM mau WHERE month < ?').bind(prev),
+    db.prepare('DELETE FROM revoked_sessions WHERE expires_at < ?').bind(now.toISOString()),
   ]);
 }
 
@@ -167,6 +177,7 @@ export async function deleteSite(db, siteId) {
     db.prepare('DELETE FROM codes WHERE site_id = ?').bind(siteId),
     db.prepare('DELETE FROM rate_events WHERE site_id = ?').bind(siteId),
     db.prepare('DELETE FROM mau WHERE site_id = ?').bind(siteId),
+    db.prepare('DELETE FROM revoked_sessions WHERE site_id = ?').bind(siteId),
     db.prepare('DELETE FROM sites WHERE id = ?').bind(siteId),
   ]);
 }
