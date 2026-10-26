@@ -5,7 +5,7 @@
 //
 //   GET  /health   死活確認
 //   /api/*         管理 API(マイページ プラグインの設定画面から kintone.plugin.app.proxy / fetch で直接。src/api.js)
-//   /v1/*          メンバー向け(画面側から。P2・P3 で追加)
+//   /v1/*          メンバー向け(画面側からサーバー間で。src/v1.js。P2: 本人確認・セッション / P3: 閲覧・編集・添付・自己登録)
 //
 // 日次 cron: 一時データの掃除・ライセンスの再確認・トークンの権限の再検証・使用回数の古い日の掃除
 import { authenticatePage, isSiteAdmin, SITE_ADMIN_ERROR } from './auth.js';
@@ -17,6 +17,7 @@ import { gateStub, SiteGate } from './gate.js';
 import { formDef, kintoneFor, pageAddToken, pageToken } from './kintone.js';
 import { checkMypageLicense, licenseServeState } from './license.js';
 import { json, nowIso } from './util.js';
+import { handleV1 } from './v1.js';
 
 export { SiteGate };
 
@@ -26,6 +27,7 @@ export default {
     try {
       if (url.pathname === '/health' && request.method === 'GET') return json({ ok: true }, 200, corsHeaders(request));
       if (url.pathname.startsWith('/api/')) return await handleApi(request, env, ctx, url);
+      if (url.pathname.startsWith('/v1/')) return await handleV1(request, env, ctx, url);
       return json({ error: 'not_found' }, 404);
     } catch (err) {
       console.error(`[${url.pathname}] ${err.stack || err}`);

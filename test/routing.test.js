@@ -15,9 +15,9 @@ describe('ルーティング', () => {
     expect((await call(worker, env, 'GET', '/api/slug-check?slug=api')).body.available).toBe(false);
   });
   it('知らないパスは 404。画面(HTML)は返さない', async () => {
-    for (const p of ['/', '/api/', '/api/pages', '/v1/me/pages', '/sample/app10/']) {
+    for (const p of ['/', '/api/', '/api/pages', '/v1/me/pages', '/v1/unknown', '/sample/app10/']) {
       const r = await call(worker, env, 'GET', p);
-      expect(r.status).toBe(404);
+      expect(r.status).toBe(p.startsWith('/v1/') ? 401 : 404); // /v1 は画面側との共有の鍵が無ければ 401
       expect(r.headers.get('Content-Type')).toMatch(/^application\/json/);
     }
   });

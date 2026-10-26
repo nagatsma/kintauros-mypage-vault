@@ -42,7 +42,21 @@ API_HOST = "api.kintauros-vault.com"
 PUBLIC_BASE_DOMAIN = "kintauros.me"
 # Google・LINE のリダイレクト先(画面側。設計 V4: 今のまま)
 AUTH_HOST = "auth.kintauros.me"
+# Google OAuth のクライアント ID(秘密ではない。画面側と同じクライアント。シークレットは保管庫専用の 2 つ目を GOOGLE_CLIENT_SECRET に)
+GOOGLE_CLIENT_ID = "62623584312-0362m3dcgpp2dv1vou0k4q732phtjpu4.apps.googleusercontent.com"
+# 確認コードのメールの差出人(アドレスだけ使う。表示名はサイト名)
+MAIL_FROM = "KINTAUROS マイページ <noreply@kintauros.com>"
 
 # シークレット(値はリポジトリに書かない。保管庫のアカウントのダッシュボード Workers → kintauros-mypage-vault → Settings で登録):
 #   VAULT_KEK - ページ DEK・サイト DEK を包む鍵(base64 の 32 バイト。`openssl rand -base64 32`)。未設定だと登録は 503
 #               変えると保管庫の全トークン・LINE のシークレットが復号できなくなるので再生成しない
+#   VAULT_SESSION_KEY    - メンバーのセッション・自己登録のトークンの署名鍵(base64 の 32 バイト。KEK とは別の値)。未設定だと /v1 は 503
+#                          入れ替えると全員のログインが無効になる(漏えいの疑いがあるときは入れ替えてよい)
+#   VAULT_FRONT_KEY      - 画面側(mypage-worker)との共有の鍵(32 文字以上。X-Mypage-Front-Key)。防御の根拠ではなく雑多な呼び出し除け。
+#                          未設定だと /v1 は 503(画面側を切り替える P4 まで閉じておける)
+#   GOOGLE_CLIENT_SECRET - Google OAuth のクライアントシークレット(保管庫専用に追加した 2 つ目。未設定なら Google ログインは無効)
+#   RESEND_API_KEY       - 確認コードのメール送信(保管庫専用の送信キー。未設定なら送らない)
+#   TURNSTILE_SECRET     - Turnstile のシークレット(未設定なら検証しない)
+#
+# 環境変数(ダッシュボードで設定。値はリポジトリに書かない。未設定なら検査しない):
+#   LIMIT_CODE_FAILS_PER_SITE_HOUR - サイト全体の 1 時間の確認コードの照合の失敗数の上限(超えたらそのサイトの照合を止める)
