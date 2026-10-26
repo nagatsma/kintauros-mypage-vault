@@ -99,13 +99,15 @@ export async function call(worker, env, method, path, { key, body, origin } = {}
 }
 
 // メンバー向け API(/v1)を画面側として呼ぶ。応答は { status, body, text }
-export async function v1(worker, env, method, path, { host = 'sample.kintauros.me', session, body, frontKey = FRONT_KEY, ip = '203.0.113.1', ctx: c = ctx } = {}) {
-  const headers = { 'Content-Type': 'application/json' };
+//   rawBody: JSON でない本文(添付のアップロード)。headers: 追加のヘッダー
+export async function v1(worker, env, method, path, { host = 'sample.kintauros.me', session, body, rawBody, headers: extra = {}, frontKey = FRONT_KEY, ip = '203.0.113.1', ctx: c = ctx } = {}) {
+  const headers = { 'Content-Type': 'application/json', ...extra };
   if (frontKey) headers['X-Mypage-Front-Key'] = frontKey;
   if (host) headers['X-Mypage-Host'] = host;
   if (session) headers['X-Mypage-Session'] = session;
   if (ip) headers['X-Mypage-Client-IP'] = ip;
-  const res = await worker.fetch(new Request(`https://api.kintauros-vault.com${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }), env, c);
+  const payload = rawBody !== undefined ? rawBody : body === undefined ? undefined : JSON.stringify(body);
+  const res = await worker.fetch(new Request(`https://api.kintauros-vault.com${path}`, { method, headers, body: payload }), env, c);
   const text = await res.text();
   let json = null;
   try { json = JSON.parse(text); } catch { /* 本文なし */ }

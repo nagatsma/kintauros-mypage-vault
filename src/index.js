@@ -5,7 +5,7 @@
 //
 //   GET  /health   死活確認
 //   /api/*         管理 API(マイページ プラグインの設定画面から kintone.plugin.app.proxy / fetch で直接。src/api.js)
-//   /v1/*          メンバー向け(画面側からサーバー間で。src/v1.js。P2: 本人確認・セッション / P3: 閲覧・編集・添付・自己登録)
+//   /v1/*          メンバー向け(画面側からサーバー間で。src/v1.js。P2: 本人確認・セッション / P3: 閲覧・編集・添付・自己登録・LINE 連携。src/member-data.js)
 //
 // 日次 cron: 一時データの掃除・ライセンスの再確認・トークンの権限の再検証・使用回数の古い日の掃除
 import { authenticatePage, isSiteAdmin, SITE_ADMIN_ERROR } from './auth.js';

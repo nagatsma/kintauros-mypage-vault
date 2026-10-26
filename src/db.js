@@ -157,6 +157,7 @@ export async function cleanup(db) {
     db.prepare('DELETE FROM ops_log WHERE at < ?').bind(new Date(now.getTime() - OPS_LOG_KEEP_DAYS * 24 * 60 * 60 * 1000).toISOString()),
     db.prepare('DELETE FROM mau WHERE month < ?').bind(prev),
     db.prepare('DELETE FROM revoked_sessions WHERE expires_at < ?').bind(now.toISOString()),
+    db.prepare('DELETE FROM usage_counters WHERE bucket < ?').bind(new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString().slice(0, 13)),
   ]);
 }
 

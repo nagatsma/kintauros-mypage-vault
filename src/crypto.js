@@ -16,8 +16,9 @@ export const INFO = {
   session: 'kintauros-mypage/session',  // 本人確認の Cookie
   menu: 'kintauros-mypage/menu',        // メニューの Cookie
   state: 'kintauros-mypage/state',      // Google の state・PKCE の Cookie
-  file: 'kintauros-mypage/file',        // 添付の署名付き識別子
-  csrf: 'kintauros-mypage/csrf',        // 編集フォームごとのトークン(§4.5。サイト・メンバー・ページ・レコードに結び付ける)
+  file: 'kintauros-mypage/file',        // 添付の署名付き識別子(表示中のレコードの fileKey。セッション・ページ・レコードに結び付ける)
+  upload: 'kintauros-mypage-vault/upload', // アップロード済みの添付の識別子(kintone の一時的な fileKey。セッション・ページに結び付ける)
+  csrf: 'kintauros-mypage/csrf',        // 編集フォームごとのトークン(§4.5。サイト・セッション・ページ・レコードに結び付ける)
   signup: 'kintauros-mypage/signup',    // 自己登録の画面のトークン(本人確認した識別子・ページ・30 分。§19)
 };
 

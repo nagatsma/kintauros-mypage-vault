@@ -31,6 +31,9 @@ export const OAUTH_BIND_MIN = 32;                      // OAuth の開始時に�
 // 異常を検知する量の上限(設計 §6.2-5)は環境変数(ダッシュボードで設定。未設定なら検査しない)。名前だけここに書く
 export const LIMIT_VARS = {
   codeFailsPerSiteHour: 'LIMIT_CODE_FAILS_PER_SITE_HOUR', // サイト全体の 1 時間の確認コードの照合の失敗数。超えたらそのサイトの照合を止める(通知は P4)
+  // P3(閲覧・編集・添付)。この 2 つは必須: 未設定ならメンバーのデータの API は 503(上限なしで開かない)
+  memberRequestsPerMin: 'LIMIT_MEMBER_REQUESTS_PER_MIN',  // メンバーごとの 1 分の呼び出し回数(設計 §4.6.3)。超えたら 429
+  recordsPerSessionHour: 'LIMIT_RECORDS_PER_SESSION_HOUR', // 1 セッションが 1 時間(UTC の時刻の区切り)に取得するレコード数(§6.2-5・V6)。超えたら 429(停止と通知は P4)
 };
 
 // kintone の API 上限を食いつぶさない(設計 §4.6.3)
@@ -38,7 +41,6 @@ export const SITE_CONCURRENCY = 10;                    // サイト(ドメイン
 export const SITE_QUEUE_WAIT_MS = 5000;                // 空くまで待つ上限
 export const PAGE_DAILY_LIMIT_DEFAULT = 5000;          // ページ(アプリ)ごとの 1 日の回数(既定は kintone の上限の半分)
 export const PAGE_DAILY_LIMIT_MAX = 100000;
-export const MEMBER_REQUESTS_PER_MIN = 60;             // メンバーごとのレート制限
 export const KINTONE_TIMEOUT_MS = 8000;
 export const KINTONE_FILE_TIMEOUT_MS = 30000;
 
@@ -51,8 +53,9 @@ export const LIST_MAX_OFFSET = 10000;                  // kintone の offset の
 export const LIST_FIELDS_MAX = 8;
 export const SEARCH_KEYWORD_MAX = 100;
 
-// 添付(§4.4)。ダウンロードの署名付き識別子の有効期間
-export const FILE_LINK_TTL_MS = 60 * 60 * 1000;
+// 添付(§4.4)。保管庫が署名した添付の識別子(ダウンロード・編集での削除の指定)の有効期間。編集フォーム(CSRF)と同じ
+export const FILE_LINK_TTL_MS = 2 * 60 * 60 * 1000;
+export const UPLOAD_HANDLE_TTL_MS = 2 * 60 * 60 * 1000; // アップロード済みの添付の識別子(保存で使う。kintone の fileKey は 3 日で失効)
 
 // 編集(§4.5 / §4.5.1。M2)
 export const CSRF_TTL_MS = 2 * 60 * 60 * 1000;         // フォームごとのトークン(CSRF)の有効期間
@@ -61,6 +64,9 @@ export const UPLOAD_TOTAL_BYTES = 30 * 1024 * 1024;    // 1 回の保存の mult
 export const TEXT_INPUT_MAX = 64000;                   // kintone の文字列 1 行の上限
 export const LAST_LOGIN_MAX_RECORDS = 20;              // 最終ログイン日時を書き込むレコード数の上限(1 ページあたり)
 export const COMMENT_MAX = 1000;                       // 操作の記録(レコードのコメント)の長さ
+export const SAVE_BODY_MAX = 1024 * 1024;              // 保存の JSON の大きさの上限(添付は別に送る)
+export const SAVE_OPS_MAX = 50;                        // 1 回の保存で受け付ける行の操作の数
+export const LINE_DONE_TTL_MS = 10 * 60 * 1000;        // LINE の連携(連携用リンク・メンバー自身の連携)の完了から書き込みまでの猶予
 
 // 設定値の上限
 export const SITE_NAME_MAX = 60;

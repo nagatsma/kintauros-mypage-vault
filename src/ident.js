@@ -7,6 +7,8 @@ export const asIdent = (x) => {
   return { kind: 'email', id: normalizeEmail(x) };
 };
 export const isLine = (ident) => !!ident && ident.kind === 'line';
+// レコードに書く値(行の作成者・マイページでの更新者・自己登録): メールアドレスまたは LINE のユーザー ID
+export const identValue = (ident) => asIdent(ident).id;
 // 画面用の表示: メールアドレス、または「LINE: 表示名」
 export const identLabel = (ident) => {
   const i = asIdent(ident);
