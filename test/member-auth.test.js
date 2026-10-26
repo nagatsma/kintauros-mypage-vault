@@ -390,8 +390,10 @@ describe('セッション(画面側が乗っ取られても他人のセッショ
   });
 
   it('本人確認を経ずにセッションを返す経路が無い(任意の内容で全部の /v1 を呼んでも)', async () => {
-    const body = { email: VICTIM, ident: { kind: 'email', id: VICTIM }, kind: 'email', id: VICTIM, c: 'AAAAAAAAAAAAAAAA', code: '000000', state: `${'A'.repeat(16)}.${'B'.repeat(32)}`, bind: 'C'.repeat(43), method: 'email', session: { e: VICTIM }, verified: true };
-    const paths = ['/v1/site', '/v1/login/email', '/v1/login/email/code?c=AAAAAAAAAAAAAAAA', '/v1/login/email/verify', '/v1/login/google/start', '/v1/login/line/start', '/v1/login/google/finish', '/v1/login/line/finish', '/v1/session/renew', '/v1/logout', '/v1/me/pages', '/v1/session', '/v1/login', '/v1/login/session'];
+    const body = { email: VICTIM, ident: { kind: 'email', id: VICTIM }, kind: 'email', id: VICTIM, c: 'AAAAAAAAAAAAAAAA', code: '000000', state: `${'A'.repeat(16)}.${'B'.repeat(32)}`, bind: 'C'.repeat(43), method: 'email', session: { e: VICTIM }, verified: true, token: `${'A'.repeat(40)}.${'B'.repeat(43)}`, ticket: `${'A'.repeat(16)}.${'B'.repeat(32)}`, values: { メール: VICTIM } };
+    const paths = ['/v1/site', '/v1/login/email', '/v1/login/email/code?c=AAAAAAAAAAAAAAAA', '/v1/login/email/verify', '/v1/login/google/start', '/v1/login/line/start', '/v1/login/google/finish', '/v1/login/line/finish', '/v1/session/renew', '/v1/logout', '/v1/me/pages', '/v1/session', '/v1/login', '/v1/login/session',
+      // P3: 自己登録・LINE の連携・データ(本人確認の結果のトークン・引換券が無ければセッションを返さない)
+      '/v1/signup', '/v1/signup/form', '/v1/line/link', '/v1/line/connect', '/v1/pages/app10/records', '/v1/pages/app10/records/5', '/v1/pages/app10/records/5/save', '/v1/pages/app10/records/5/rows', '/v1/pages/app10/files'];
     for (const p of paths) {
       for (const method of ['GET', 'POST']) {
         const r = await call(method, p, { body: method === 'POST' ? body : undefined });

@@ -11,7 +11,7 @@
 import { sendEmail } from './kit/email.js';
 import {
   EMAIL_CODE_ATTEMPTS, EMAIL_CODE_TRIES_PER_ADDRESS_HOUR, EMAIL_CODE_TTL_MS, EMAIL_SENDS_PER_ADDRESS_10MIN, EMAIL_SENDS_PER_SITE_HOUR, LANGS, LAST_LOGIN_MAX_RECORDS,
-  LIMIT_VARS, LOGIN_ATTEMPTS_PER_IP_10MIN, OAUTH_BIND_MIN, OAUTH_STATE_TTL_MS, SIGNUP_TOKEN_TTL_MS,
+  LINE_DONE_TTL_MS, LOGIN_ATTEMPTS_PER_IP_10MIN, OAUTH_BIND_MIN, OAUTH_STATE_TTL_MS, SIGNUP_TOKEN_TTL_MS,
 } from './config.js';
 import { INFO, decryptSecret, hmacHex, ipHash, newEmailCode, normalizeEmail } from './crypto.js';
 import { addRate, countRate, deleteCode, getCode, getSiteById, insertCode, listPages, logOp, orderPages, reserveCodeAttempt, takeCode, touchMau } from './db.js';
@@ -21,7 +21,8 @@ import { asIdent, identHash, identLabel, isLine } from './ident.js';
 import { kintoneFor, pageToken } from './kintone.js';
 import * as line from './line.js';
 import { identMatches, isEmail, matchSpec, membershipQuery, pageAcceptsIdent } from './match.js';
-import { issueSession, signSignup } from './session.js';
+import { issueSession, signSignup, verifySession } from './session.js';
+import { overLimit, siteLimit } from './quota.js';
 import { turnstileOk } from './turnstile.js';
 import { nowIso, randomToken, safeNext, timingSafeEqual, utcMonth } from './util.js';
 
@@ -31,7 +32,7 @@ const since = (ms) => new Date(Date.now() - ms).toISOString();
 const out = (status, body) => ({ status, body });
 const fail = (status, error, extra = {}) => out(status, { ok: false, error, ...extra });
 const langOf = (v) => (LANGS.includes(v) ? v : '');
-const STATE_RE = /^([A-Za-z0-9_-]{16})\.([A-Za-z0-9_-]{32})$/;
+export const STATE_RE = /^([A-Za-z0-9_-]{16})\.([A-Za-z0-9_-]{32})$/;
 const member = (ident) => ({ kind: asIdent(ident).kind, label: identLabel(ident) });
 
 // ---- メンバーかどうかの照合(入れるページの ID を返す。レコードの内容は取らない)----
@@ -119,17 +120,9 @@ export async function siteInfo(env, site) {
   });
 }
 
-// ---- 共通: レート制限(先に数を入れてから数えるので、並列に送られても上限を超えない)----
-async function overLimit(env, site, kind, key, windowMs, max) {
-  await addRate(env.DB, site.id, kind, key);
-  return (await countRate(env.DB, site.id, kind, key, since(windowMs))) > max;
-}
+// ---- 共通: レート制限(quota.js。先に数を入れてから数えるので、並列に送られても上限を超えない)----
 // IP は画面側が渡す値(X-Mypage-Client-IP)なので目安。無いときはサイトで 1 つの枠になる
-const tooManyFromIp = async (env, site, ip) => overLimit(env, site, 'login_ip', await ipHash(env, ip || ''), 10 * MIN, LOGIN_ATTEMPTS_PER_IP_10MIN);
-const siteLimit = (env, name) => {
-  const n = Number(env[LIMIT_VARS[name]]);
-  return Number.isInteger(n) && n > 0 ? n : 0;
-};
+export const tooManyFromIp = async (env, site, ip) => overLimit(env, site, 'login_ip', await ipHash(env, ip || ''), 10 * MIN, LOGIN_ATTEMPTS_PER_IP_10MIN);
 
 // ---- 本人確認の後(メール・Google・LINE 共通)----
 // ログイン成功: セッションを署名して返し、MAU・ログ・最終ログイン日時を記録する
@@ -252,7 +245,7 @@ export async function verifyEmail(env, site, ctx, input, { ip }) {
 const callbackUrl = (env, provider) => `https://${env.AUTH_HOST}/${provider}/callback`;
 // 開始: state(識別子+秘密)・verifier・nonce を保管庫に置き、認可 URL と bind(ブラウザとの結び付け)を返す。
 //   bind は画面側が auth ホストの Cookie に入れ、完了のときに一緒に渡す(他人が始めた流れを別のブラウザで完了させない)
-async function startOAuth(env, site, host, provider, input) {
+async function startOAuth(env, site, host, provider, input, extra = {}) {
   const { verifier, challenge } = await pkcePair();
   const nonce = randomToken(16);
   const id = randomToken(12);
@@ -260,7 +253,7 @@ async function startOAuth(env, site, host, provider, input) {
   const bind = randomToken(32);
   await insertCode(env.DB, {
     id, siteId: site.id, kind: 'oauth', hash: await hmacHex(env, secret, INFO.state),
-    data: { p: provider, v: verifier, nonce, b: await hmacHex(env, bind, INFO.state), h: host, n: safeNext(input.next), l: langOf(input.lang), su: input.su === true || input.su === 1 || input.su === '1' ? 1 : 0 },
+    data: { p: provider, v: verifier, nonce, b: await hmacHex(env, bind, INFO.state), h: host, n: safeNext(input.next), l: langOf(input.lang), su: input.su === true || input.su === 1 || input.su === '1' ? 1 : 0, ...extra },
     expiresAt: new Date(Date.now() + OAUTH_STATE_TTL_MS).toISOString(),
   });
   return { state: `${id}.${secret}`, nonce, challenge, bind };
@@ -274,11 +267,22 @@ export async function startGoogle(env, site, host, input, { ip }) {
   const url = authorizeUrl(env, { redirectUri: callbackUrl(env, 'google'), state: st.state, nonce: st.nonce, challenge: st.challenge, loginHint: isEmail(hint) ? hint : '' });
   return out(200, { ok: true, url, bind: st.bind });
 }
-// POST /v1/login/line/start  { next, su, lang }。LINE 連携用リンク・メンバー自身の連携は P3(/v1/line/connect)
-export async function startLine(env, site, host, input, { ip }) {
+// POST /v1/login/line/start  { next, su, lang, link?, connect? }
+//   link: 社内が発行した連携用リンクの値(完了の後、/v1/line/connect でそのレコードに LINE 連携 ID を書いてから LINE でログイン)
+//   connect: メンバー自身の連携(セッション必須・メールアドレスで入っている人だけ。完了の後、/v1/line/connect で同じセッションから書き込む)
+export async function startLine(env, site, host, input, { ip, session }) {
   if (!lineConfigured(site)) return fail(403, 'login_disabled');
   if (await tooManyFromIp(env, site, ip)) return fail(429, 'too_many');
-  const st = await startOAuth(env, site, host, 'line', input);
+  const extra = {};
+  if (input.connect === true || input.connect === 1 || input.connect === '1') {
+    const v = await verifySession(env, site, session || '');
+    if (!v.ok || isLine(v.ident) || !site.settings.line.selfLink) return fail(403, 'connect_unavailable');
+    extra.cn = { sid: v.session.sid, e: v.ident.id };
+  } else if (input.link !== undefined) {
+    if (!STATE_RE.test(String(input.link || ''))) return fail(400, 'link_invalid');
+    extra.lk = String(input.link);
+  }
+  const st = await startOAuth(env, site, host, 'line', extra.cn || extra.lk ? { ...input, su: 0 } : input, extra);
   const url = line.authorizeUrl(site.line_channel_id, { redirectUri: callbackUrl(env, 'line'), state: st.state, nonce: st.nonce, challenge: st.challenge });
   return out(200, { ok: true, url, bind: st.bind });
 }
@@ -331,6 +335,13 @@ export async function finishLine(env, ctx, input, { ip }) {
   const v = await line.verifyIdToken({ idToken: ex.idToken, channelId: site.line_channel_id, channelSecret: secret, nonce: data.nonce });
   if (!v.ok) return fail(400, 'line_failed', back(data));
   const ident = asIdent({ kind: 'line', id: v.claims.sub, name: String(v.claims.name || '').slice(0, 80) });
+  // 連携(連携用リンク・メンバー自身の連携): ここではログインせず、書き込みの引換券を返す(書き込みはサイトのホストから /v1/line/connect で)
+  if (data.lk || data.cn) {
+    const id = randomToken(12);
+    const secret = randomToken(24);
+    await insertCode(env.DB, { id, siteId: site.id, kind: 'line_done', hash: await hmacHex(env, secret, INFO.code), data: { id: ident.id, name: ident.name, lk: data.lk || null, cn: data.cn || null }, expiresAt: new Date(Date.now() + LINE_DONE_TTL_MS).toISOString() });
+    return out(200, { ok: true, result: 'line_connect', ticket: `${id}.${secret}`, ...back(data) });
+  }
   const pages = await listPages(env.DB, site.id);
   const pageIds = await checkMembership(env, site, scopePages(site, pages, entryPageOf(pages, data.n)), ident);
   const r = await afterVerify(env, site, ctx, { ident, method: 'line', pageIds, pages, next: data.n, su: !!data.su });
