@@ -7,7 +7,7 @@
 //   X-Mypage-Session    セッション(__Host-kmp の中身。保管庫が署名したもの)
 //   X-Mypage-Client-IP  メンバーの IP(レート制限の目安。画面側の申告なので信頼しない)
 //
-//   GET  /v1/site                     サイトの表示用の情報(ログイン方法など。秘密なし)
+//   GET  /v1/site                     サイトの表示用の情報(ログイン方法・ページの並び・メンバー証の対象など。秘密なし)
 //   POST /v1/login/email              確認コードの送信 { email, next, su, lang, turnstile } → { codeId }(登録の有無で応答を変えない)
 //   GET  /v1/login/email/code?c=      確認コードの入力画面用 → { email, next }
 //   POST /v1/login/email/verify       照合 { c, code } → 結果(下記)
@@ -65,7 +65,7 @@ export async function handleV1(request, env, ctx, url) {
   if (!site || !hostBelongs(env, site, host)) return fail(404, 'site_not_found');
   if (!siteServing(site)) return fail(403, 'site_stopped');
 
-  if (method === 'GET' && path === '/v1/site') return reply(await siteInfo(env, site));
+  if (method === 'GET' && path === '/v1/site') return reply(await siteInfo(env, site, { cardOf }));
   if (method === 'GET' && path === '/v1/login/email/code') return reply(await emailCodeInfo(env, site, url.searchParams.get('c')));
   if (method === 'POST' && path.startsWith('/v1/login/')) {
     const input = await body(request);

@@ -314,7 +314,7 @@ describe('編集: 入力値だけを受け取り、保管庫が検証して PUT 
   it('メンバー表: 自分の行・同僚の行のアドレスと LINE 連携 ID は書き換えられない。追加(招待)の新しい行にだけアドレスを入れられる', async () => {
     const s = await sessionOf();
     const d = await detail(s, 'team', '7');
-    expect(d.editable.tables.担当者).toEqual({ add: ['メール', '名前'], edit: ['名前'] });
+    expect(d.editable.tables.担当者).toEqual({ add: ['メール', '名前'], edit: ['名前'], deleteMode: 'remove', member: true });
     const r = await post('/v1/pages/team/records/7/save', s, {
       csrf: d.csrf, revision: d.record.revision,
       ops: [
