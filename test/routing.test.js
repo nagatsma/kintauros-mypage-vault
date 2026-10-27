@@ -44,6 +44,10 @@ describe('設定の検証', () => {
     expect(v.ok).toBe(false);
     expect(v.value.sessionDays).toBe(90);
     expect(validateSiteSettings({ login: { google: false, email: false } }).ok).toBe(false);
+    // 管理者の通知先(任意): 空か正しいメールアドレスだけ。小文字にそろえる
+    expect(validateSiteSettings({}).value.notifyEmail).toBe('');
+    expect(validateSiteSettings({ notifyEmail: ' Admin@Example.com ' }).value.notifyEmail).toBe('admin@example.com');
+    expect(validateSiteSettings({ notifyEmail: 'not-an-address' }).errors.map((e) => e.path)).toEqual(['notifyEmail']);
   });
   it('メンバー証は対象のページで閲覧を付けたフィールドだけ', () => {
     const PID = '11111111-2222-4333-8444-555555555555';

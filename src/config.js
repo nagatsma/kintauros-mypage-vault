@@ -30,10 +30,10 @@ export const EMAIL_CODE_TRIES_PER_ADDRESS_HOUR = 10;   // 同じアドレスの�
 export const OAUTH_BIND_MIN = 32;                      // OAuth の開始時に返すブラウザとの結び付けの値の長さ(画面側が auth ホストの Cookie に入れる)
 // 異常を検知する量の上限(設計 §6.2-5)は環境変数(ダッシュボードで設定。未設定なら検査しない)。名前だけここに書く
 export const LIMIT_VARS = {
-  codeFailsPerSiteHour: 'LIMIT_CODE_FAILS_PER_SITE_HOUR', // サイト全体の 1 時間の確認コードの照合の失敗数。超えたらそのサイトの照合を止める(通知は P4)
+  codeFailsPerSiteHour: 'LIMIT_CODE_FAILS_PER_SITE_HOUR', // サイト全体の 1 時間の確認コードの照合の失敗数。超えたらそのサイトの照合だけ止め、当社と管理者に知らせる(alert.js)
   // P3(閲覧・編集・添付)。この 2 つは必須: 未設定ならメンバーのデータの API は 503(上限なしで開かない)
   memberRequestsPerMin: 'LIMIT_MEMBER_REQUESTS_PER_MIN',  // メンバーごとの 1 分の呼び出し回数(設計 §4.6.3)。超えたら 429
-  recordsPerSessionHour: 'LIMIT_RECORDS_PER_SESSION_HOUR', // 1 セッションが 1 時間(UTC の時刻の区切り)に取得するレコード数(§6.2-5・V6)。超えたら 429(停止と通知は P4)
+  recordsPerSessionHour: 'LIMIT_RECORDS_PER_SESSION_HOUR', // 1 セッションが 1 時間(UTC の時刻の区切り)に取得するレコード数(§6.2-5・V6)。超えたらそのセッションだけ 429
 };
 
 // kintone の API 上限を食いつぶさない(設計 §4.6.3)
