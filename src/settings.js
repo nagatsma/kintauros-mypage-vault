@@ -5,6 +5,7 @@ import {
   SITE_NAME_MAX, THEME_COLOR_DEFAULT, THEME_COLOR_RE, URL_MAX, LINE_LINK_DAYS_DEFAULT, LINE_LINK_DAYS_MAX, LINE_LINK_DAYS_MIN, SIGNUP_CONSENT_MAX, SIGNUP_FIELDS_MAX,
 } from './config.js';
 import { normalizeAttachmentRule } from './kit/files.js';
+import { isEmail } from './match.js';
 
 const CODE_RE = /^[^\s\x00-\x1f\x7f"]{1,128}$/;
 const HTTPS_RE = /^https:\/\/[^\s"'<>]+$/;
@@ -25,6 +26,8 @@ export function validateSiteSettings(input) {
     themeColor: typeof s.themeColor === 'string' && THEME_COLOR_RE.test(s.themeColor) ? s.themeColor.toLowerCase() : THEME_COLOR_DEFAULT,
     contact: str(s.contact, CONTACT_MAX),
     privacyUrl: str(s.privacyUrl, URL_MAX),
+    // 管理者の通知先(任意。量の上限を超えたときの通知。alert.js)。メンバーの画面(/v1/site)には返さない
+    notifyEmail: str(s.notifyEmail, 254).toLowerCase(),
     login: { google: bool(login.google, true), email: bool(login.email, true) },
     sessionDays: Number.isInteger(s.sessionDays) && s.sessionDays >= SESSION_DAYS_MIN && s.sessionDays <= SESSION_DAYS_MAX ? s.sessionDays : SESSION_DAYS_DEFAULT,
     topCheckScope: s.topCheckScope === 'pages' ? 'pages' : 'all',
@@ -41,6 +44,7 @@ export function validateSiteSettings(input) {
     card: { enabled: bool(card.enabled), page: typeof card.page === 'string' && /^[0-9a-f-]{36}$/.test(card.page) ? card.page : '', field: code(card.field), fields: codeList(card.fields, LIST_FIELDS_MAX), name: str(card.name, PAGE_NAME_MAX) },
   };
   if (out.privacyUrl && !HTTPS_RE.test(out.privacyUrl)) errors.push({ path: 'privacyUrl', message: 'https:// で始まる URL を指定してください' });
+  if (out.notifyEmail && !isEmail(out.notifyEmail)) errors.push({ path: 'notifyEmail', message: 'メールアドレスの形式で入力してください' });
   if (!out.login.google && !out.login.email) errors.push({ path: 'login', message: 'ログイン方法を 1 つ以上選んでください' });
   return { ok: errors.length === 0, value: out, errors };
 }

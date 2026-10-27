@@ -125,7 +125,7 @@ const renew = (session, host = HOST) => call('POST', '/v1/session/renew', { sess
 afterEach(() => {
   const all = texts.join('\n');
   for (const s of secrets) if (s) expect(all.includes(s), `応答に秘密が含まれている: ${s.slice(0, 6)}…`).toBe(false);
-  for (const m of mail) {
+  for (const m of mail.filter((x) => !x.to[0].endsWith('@example.test'))) { // 警報(alert.js)の宛先は example.test
     const code = codeOf(m);
     expect(all.includes(`"${code}"`), '応答に確認コードが含まれている').toBe(false);
   }
@@ -214,6 +214,47 @@ describe('メールの確認コード', () => {
     for (let i = 0; i < 3; i++) await verifyCode(codeId, wrong(code));
     const r = await verifyCode(codeId, code);
     expect(r.status).toBe(429);
+  });
+
+  it('サイト全体の上限を超えたら当社と管理者に 1 時間に 1 回だけ知らせる(並列でも)。サイトは止めない', async () => {
+    env.LIMIT_CODE_FAILS_PER_SITE_HOUR = '3';
+    env.ALERT_EMAIL = 'ops@example.test';
+    const { codeId, code } = await sendCode();
+    db.sqlite.prepare('UPDATE sites SET settings = ? WHERE id = ?').run(JSON.stringify({ ...SITE_SETTINGS, notifyEmail: 'admin@example.test', lang: 'en' }), SITE);
+    const sent = mail.length;
+    for (let i = 0; i < 2; i++) await verifyCode(codeId, wrong(code));
+    await Promise.all(jobs);
+    expect(mail.length).toBe(sent); // 上限の手前では送らない
+    await verifyCode(codeId, wrong(code)); // 3 回目で上限に届く
+    await Promise.all(await Promise.all(Array.from({ length: 6 }, () => verifyCode(codeId, code))).then(() => jobs));
+    const alerts = mail.slice(sent);
+    expect(alerts.map((m) => m.to[0]).sort()).toEqual(['admin@example.test', 'ops@example.test']);
+    const admin = alerts.find((m) => m.to[0] === 'admin@example.test');
+    expect(admin.subject).toMatch(/temporarily stopped/); // 管理者には設定の言語で
+    expect(admin.text).not.toMatch(/ops@example\.test|LIMIT_|\b3\b/); // 当社の宛先・上限の名前と値を出さない
+    expect(alerts.map((m) => m.subject + m.text).join(' ')).not.toContain(VICTIM.toLowerCase());
+    expect(db.rows("SELECT action FROM ops_log WHERE action = 'code_fail_limit'")).toHaveLength(1);
+    // 確認コードでのログインだけが止まり、Google のログインは通る
+    expect((await verifyCode(codeId, code)).status).toBe(429);
+    await startOAuth('google');
+    expect((await finish('google')).body.result).toBe('login');
+  });
+
+  it('通知先が無ければ送らない(当社の ALERT_EMAIL・管理者の通知先のどちらも任意)', async () => {
+    env.LIMIT_CODE_FAILS_PER_SITE_HOUR = '1';
+    const { codeId, code } = await sendCode();
+    const sent = mail.length;
+    await verifyCode(codeId, wrong(code));
+    await Promise.all(jobs);
+    expect(mail.length).toBe(sent);
+    expect(db.rows("SELECT action FROM ops_log WHERE action = 'code_fail_limit'")).toHaveLength(1);
+  });
+
+  it('管理者の通知先はメンバーの画面向けの /v1/site に返さない', async () => {
+    db.sqlite.prepare('UPDATE sites SET settings = ? WHERE id = ?').run(JSON.stringify({ ...SITE_SETTINGS, notifyEmail: 'admin@example.test' }), SITE);
+    const r = await call('GET', '/v1/site');
+    expect(r.status).toBe(200);
+    expect(r.text).not.toContain('admin@example.test');
   });
 
   it('別のサイトで発行したコードは使えない。サイトはホスト名から保管庫が決める', async () => {

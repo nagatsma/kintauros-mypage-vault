@@ -59,6 +59,7 @@ MAIL_FROM = "KINTAUROS マイページ <noreply@kintauros.com>"
 #   TURNSTILE_SECRET     - Turnstile のシークレット(未設定なら検証しない)
 #
 # 環境変数(ダッシュボードで「テキスト」として設定。値はリポジトリに書かない):
-#   LIMIT_CODE_FAILS_PER_SITE_HOUR - サイト全体の 1 時間の確認コードの照合の失敗数の上限(超えたらそのサイトの照合を止める。未設定なら検査しない)
+#   LIMIT_CODE_FAILS_PER_SITE_HOUR - サイト全体の 1 時間の確認コードの照合の失敗数の上限(超えたらそのサイトの照合だけ止めて ALERT_EMAIL と管理者の通知先に知らせる。未設定なら検査しない)
 #   LIMIT_MEMBER_REQUESTS_PER_MIN  - メンバーごとの 1 分のデータの API の呼び出し回数の上限(必須。未設定ならデータの API は 503)
 #   LIMIT_RECORDS_PER_SESSION_HOUR - 1 セッションが 1 時間に取得するレコード数の上限(必須。未設定ならデータの API は 503)
+#   ALERT_EMAIL                    - 当社の通知先(量の上限を超えたときの警報。src/alert.js。未設定なら当社には送らない)

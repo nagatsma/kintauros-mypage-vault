@@ -8,6 +8,7 @@
 // 本人確認の後: あわせて確認するページの範囲でメンバーかどうかを照合し(match.js)、セッションを保管庫の鍵で署名して返す(session.js)。
 //   MAU・操作ログ・最終ログイン日時の書き込みも保管庫で行う。メニュー(入れるページの一覧)の Cookie は画面側が作る
 // 応答に確認コード・コードのハッシュ・state の検証用の値・verifier・シークレット・トークンを含めない。
+import { alertCodeFails } from './alert.js';
 import { sendEmail } from './kit/email.js';
 import {
   EMAIL_CODE_ATTEMPTS, EMAIL_CODE_TRIES_PER_ADDRESS_HOUR, EMAIL_CODE_TTL_MS, EMAIL_SENDS_PER_ADDRESS_10MIN, EMAIL_SENDS_PER_SITE_HOUR, LANGS, LAST_LOGIN_MAX_RECORDS,
@@ -214,8 +215,13 @@ export async function emailCodeInfo(env, site, id) {
 // POST /v1/login/email/verify  { c, code }
 export async function verifyEmail(env, site, ctx, input, { ip }) {
   if (await tooManyFromIp(env, site, ip)) return fail(429, 'too_many');
+  // サイト全体の失敗数(多数のアドレスにばらした総当たりの合図)。超えたら確認コードの照合だけ止めて、当社と管理者に知らせる(§6.2-5。サイトは止めない)
   const limit = siteLimit(env, 'codeFailsPerSiteHour');
-  if (limit && (await countRate(env.DB, site.id, 'code_fail_site', 'site', since(HOUR))) >= limit) return fail(429, 'too_many');
+  const siteFails = limit ? await countRate(env.DB, site.id, 'code_fail_site', 'site', since(HOUR)) : 0;
+  if (limit && siteFails >= limit) {
+    ctx.waitUntil(alertCodeFails(env, site));
+    return fail(429, 'too_many');
+  }
   const id = String(input.c || '');
   const code = String(input.code || '').replace(/\s/g, '');
   const row = /^[A-Za-z0-9_-]{16}$/.test(id) ? await getCode(env.DB, id, 'email') : null;
@@ -238,6 +244,7 @@ export async function verifyEmail(env, site, ctx, input, { ip }) {
   const ok = /^\d{6}$/.test(code) && timingSafeEqual(await hmacHex(env, code, INFO.code), row.hash);
   if (!ok) {
     await addRate(env.DB, site.id, 'code_fail_site', 'site');
+    if (limit && siteFails + 1 >= limit) ctx.waitUntil(alertCodeFails(env, site));
     const left = Math.max(0, EMAIL_CODE_ATTEMPTS - Number(reserved.attempts));
     if (!left) await deleteCode(env.DB, row.id);
     return fail(400, 'code_invalid', { attemptsLeft: left });
