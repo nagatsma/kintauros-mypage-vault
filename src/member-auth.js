@@ -111,12 +111,20 @@ export const siteHasSignup = (pages) => pages.some((p) => usablePage(p) && p.set
 // ---- サイトの表示用の情報(ログイン画面の組み立て用。秘密は含まない)----
 export const lineConfigured = (site) => !!(site.settings.line && site.settings.line.enabled && site.line_channel_id && site.line_secret_enc && site.dek_wrapped);
 export const loginMethods = (env, site) => ({ email: !!site.settings.login.email, google: !!site.settings.login.google && googleConfigured(env), line: lineConfigured(site) });
-export async function siteInfo(env, site) {
+//   pages: 使えるページの並び(名前と URL だけ。メニューの表示用。どのページに入れるかは本人ごとに /v1/me/pages・ログインの結果の pageIds)
+//   card: メンバー証の対象(ページ・フィールドのコード・名前。値は一覧・詳細の API で取る)/ lineSelfLink: メンバー自身の LINE 連携を出すか
+//   画面側はこれを短時間キャッシュして、画面の枠(サイト名・テーマ・メニュー・ヘッダーのメンバー証)を組み立てる(VAULT 設計 §8)
+export async function siteInfo(env, site, { cardOf } = {}) {
   const st = site.settings;
   const pages = await listPages(env.DB, site.id);
   return out(200, {
     ok: true,
-    site: { slug: site.slug, name: st.name || '', themeColor: st.themeColor, contact: st.contact || '', privacyUrl: st.privacyUrl || '', lang: st.lang || 'ja', trial: site.license_status === 'trial', login: loginMethods(env, site), signup: siteHasSignup(pages) },
+    site: {
+      slug: site.slug, name: st.name || '', themeColor: st.themeColor, contact: st.contact || '', privacyUrl: st.privacyUrl || '', lang: st.lang || 'ja', trial: site.license_status === 'trial', login: loginMethods(env, site), signup: siteHasSignup(pages),
+      pages: orderPages(site, pages).filter(usablePage).map((p) => ({ id: p.id, slug: p.slug, name: p.settings.name || '' })),
+      card: cardOf ? cardOf(site, pages) : null,
+      lineSelfLink: lineConfigured(site) && !!(st.line && st.line.selfLink),
+    },
   });
 }
 

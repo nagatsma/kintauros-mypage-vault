@@ -145,7 +145,11 @@ async function detailBody(env, site, sid, o, record, ident) {
   const shaped = await withHandles(env, site, sid, page, viewRecord(page, fields, record, ident));
   const { layout, groups } = publicLayout(page, fields, o.layout);
   const tables = {};
-  for (const code of Object.keys(shaped.tables)) tables[code] = { add: editableColumns(page, fields, code, page.settings.tables[code], { adding: true }), edit: editableColumns(page, fields, code, page.settings.tables[code]) };
+  // テーブルごとに: 追加・編集で入力できる列 / 削除の扱い(remove = 行を消す・cancel = 取り消し列にチェック)/ メンバー表か(削除の確認の文面用)
+  for (const code of Object.keys(shaped.tables)) {
+    const t = page.settings.tables[code];
+    tables[code] = { add: editableColumns(page, fields, code, t, { adding: true }), edit: editableColumns(page, fields, code, t), deleteMode: t.deleteMode === 'cancel' ? 'cancel' : 'remove', member: !!(page.settings.member && page.settings.member.table === code) };
+  }
   const editable = { fields: editableFieldCodes(page, fields), tables };
   const canAny = shaped.canEdit || Object.values(shaped.tables).some((t) => t.canAdd || t.canEdit || t.canDel);
   return { record: shaped, fields: publicFields(page, fields, { groups }), layout, editable, csrf: canAny ? await csrfOf(env, { site, sid, page, recordId: shaped.id }) : '' };

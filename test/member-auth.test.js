@@ -420,6 +420,18 @@ describe('/v1 の入口', () => {
     const r = await call('GET', '/v1/site');
     expect(r.body.site).toMatchObject({ slug: 'sample', name: '本物の会社', login: { email: true, google: true, line: false }, signup: false });
     expect(r.headers.get('Cache-Control')).toBe('no-store');
+    // 画面の枠の組み立て用: 使えるページの並び・メンバー証の対象・メンバー自身の LINE 連携(チャネル未設定なら出さない)
+    expect(r.body.site.pages).toEqual([{ id: PAGE, slug: 'app10', name: 'ご契約' }]);
+    expect(r.body.site.card).toBeNull();
+    expect(r.body.site.lineSelfLink).toBe(false);
+    db.sqlite.prepare('UPDATE sites SET settings = ? WHERE id = ?').run(JSON.stringify({ ...SITE_SETTINGS, card: { enabled: true, page: PAGE, field: 'メール', fields: [], name: '会員証' } }), SITE);
+    db.sqlite.prepare('UPDATE pages SET settings = ? WHERE id = ?').run(JSON.stringify({ ...PAGE_SETTINGS, fields: { メール: { view: true } } }), PAGE);
+    expect((await call('GET', '/v1/site')).body.site.card).toEqual({ page: 'app10', field: 'メール', fields: [], name: '会員証' });
+    // 止めたページは並びに出さない
+    db.sqlite.prepare('UPDATE pages SET settings = ? WHERE id = ?').run(JSON.stringify({ ...PAGE_SETTINGS, enabled: false }), PAGE);
+    expect((await call('GET', '/v1/site')).body.site).toMatchObject({ pages: [], card: null });
+    // 秘密・ドメイン・トークンの末尾などは返さない
+    expect(JSON.stringify((await call('GET', '/v1/site')).body)).not.toMatch(/cybozu\.com|token|0001|dek/);
     db.sqlite.prepare("UPDATE sites SET status = 'suspended' WHERE id = ?").run(SITE);
     expect((await call('GET', '/v1/site')).status).toBe(403);
     expect((await call('POST', '/v1/login/email', { body: { email: VICTIM } })).status).toBe(403);
