@@ -1,6 +1,6 @@
 // KINTAUROS マイページ 保管庫の定数(mypage-worker の config.js と同じ値。P4 で画面側から消すまで両方にある)。
 // 異常を検知する量の上限(1 セッションの取得件数など。設計 §6.2-5)の値はここに書かない — 公開リポジトリなので、
-// 値は保管庫の Worker の環境変数(ダッシュボードで設定。wrangler.toml の keep_vars で保持)から読む(LIMIT_VARS)
+// 値は保管庫の Worker のシークレット(ダッシュボードで「シークレット」の型で登録。「テキスト」はデプロイのログに値が出る)から読む(LIMIT_VARS)
 
 export const MYPAGE_PLUGIN_ID = 'mypage'; // license-api の PLUGINS / plans(M3 で PLANS.mypage を追加)
 

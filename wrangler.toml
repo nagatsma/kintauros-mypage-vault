@@ -1,12 +1,12 @@
 # KINTAUROS マイページ 保管庫(mypage-vault)
 # デプロイは GitHub Actions(.github/workflows/ci.yml)の environment `production` の承認後だけ。開発機からは wrangler deploy しない。
 # account_id は書かない(Actions が environment secret の CLOUDFLARE_ACCOUNT_ID を渡す)。
-# 公開リポジトリなので、秘密の値・異常を検知する量の上限の値はここに書かない(シークレットと、ダッシュボードで設定する環境変数)。
+# 公開リポジトリなので、秘密の値・異常を検知する量の上限の値・当社の宛先はここに書かない(どれもダッシュボードで「シークレット」の型で登録する)。
 name = "kintauros-mypage-vault"
 main = "src/index.js"
 compatibility_date = "2026-07-01"
 workers_dev = false
-# ダッシュボードで設定した環境変数(量の上限など)をデプロイで消さない
+# ダッシュボードで設定した環境変数をデプロイで消さない(予防。値を持つものは「テキスト」にしない。下の「環境変数」を参照)
 keep_vars = true
 
 # 専用ゾーン kintauros-vault.com(保管庫のアカウント)。api の DNS レコード(プロキシ有効)はダッシュボードで作る
@@ -58,7 +58,8 @@ MAIL_FROM = "KINTAUROS マイページ <noreply@kintauros.com>"
 #   RESEND_API_KEY       - 確認コードのメール送信(保管庫専用の送信キー。未設定なら送らない)
 #   TURNSTILE_SECRET     - Turnstile のシークレット(未設定なら検証しない)
 #
-# 環境変数(ダッシュボードで「テキスト」として設定。値はリポジトリに書かない):
+# 環境変数(ダッシュボードで**「シークレット」の型**で登録する。値はリポジトリに書かない):
+#   「テキスト」にすると、Actions の wrangler deploy がダッシュボードとの差分として値をログに出す(公開リポジトリのログは誰でも読める。2026-10-27 に発生)
 #   LIMIT_CODE_FAILS_PER_SITE_HOUR - サイト全体の 1 時間の確認コードの照合の失敗数の上限(超えたらそのサイトの照合だけ止めて ALERT_EMAIL と管理者の通知先に知らせる。未設定なら検査しない)
 #   LIMIT_MEMBER_REQUESTS_PER_MIN  - メンバーごとの 1 分のデータの API の呼び出し回数の上限(必須。未設定ならデータの API は 503)
 #   LIMIT_RECORDS_PER_SESSION_HOUR - 1 セッションが 1 時間に取得するレコード数の上限(必須。未設定ならデータの API は 503)
