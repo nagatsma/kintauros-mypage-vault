@@ -7,7 +7,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import worker from '../src/index.js';
 import { INFO, encryptSecret, encryptToken, hmacHex, newWrappedDek, sign } from '../src/crypto.js';
-import { getSiteById, insertCode } from '../src/db.js';
+import { getSiteById, insertCode, listPages } from '../src/db.js';
+import { afterVerify } from '../src/member-auth.js';
 import { signIdTokenForTest } from '../src/line.js';
 import { issueSession, signSignup } from '../src/session.js';
 import { validatePageSettings } from '../src/settings.js';
@@ -461,6 +462,37 @@ describe('自己登録: 本人のレコード 1 件だけ・決めたフィー�
     const r = await post('/v1/signup', null, { token: await tokenFor(VICTIM), values: { 氏名: '二重' } });
     expect(r.body.result).toBe('login');
     expect(app.calls.filter((c) => c.method === 'POST' && c.path === 'record.json')).toHaveLength(0);
+  });
+});
+
+// 本人確認の直後の振り分け(§19)。「登録済み」はページごとに見る
+describe('新規登録の入口: 登録先のページにレコードが無ければ、ほかのページにあっても登録へ進む', () => {
+  const verify = async (email, pageIds, opts = {}) => (await afterVerify(env, site, ctx, { ident: email, method: 'email', pageIds, pages: await listPages(db, SITE), next: '/app10/', su: true, ...opts })).body;
+
+  it('別のページ(取引先)にだけレコードがある人は、登録画面へ進める', async () => {
+    const r = await verify(COLLEAGUE, [TEAM_PAGE]);
+    expect(r).toMatchObject({ ok: true, result: 'signup', signup: { page: 'app10' } });
+    expect(r.session).toBeUndefined();
+    // そのトークンで登録先に 1 件だけ作れる
+    const done = await post('/v1/signup', null, { token: r.signup.token, values: { 氏名: '同僚' } });
+    expect(done.body.result).toBe('login');
+    const created = app.calls.filter((c) => c.method === 'POST' && c.path === 'record.json');
+    expect(created).toHaveLength(1);
+    expect(created[0].body.record.メール).toEqual(v(COLLEAGUE));
+  });
+
+  it('登録先に既にレコードがある人は、作らずにログインする(確認の範囲の外で登録先を見ていなかった場合も確かめ直す)', async () => {
+    for (const pageIds of [[PAGE, TEAM_PAGE], [TEAM_PAGE]]) {
+      const r = await verify(VICTIM, pageIds);
+      expect(r).toMatchObject({ result: 'login', next: '/?already=1' });
+      expect(r.signup).toBeUndefined();
+    }
+  });
+
+  it('ログインの入口から来た人は登録へ進めない。戻り先が自己登録できないページなら、自己登録できるページが登録先になる', async () => {
+    expect((await verify(COLLEAGUE, [TEAM_PAGE], { su: false })).result).toBe('login');
+    expect((await verify(COLLEAGUE, [], { su: false })).result).toBe('no_pages');
+    expect(await verify(COLLEAGUE, [TEAM_PAGE], { next: '/team/' })).toMatchObject({ result: 'signup', signup: { page: 'app10' } });
   });
 });
 

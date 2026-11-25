@@ -462,7 +462,7 @@ describe('/v1 の入口', () => {
     expect(r.body.site).toMatchObject({ slug: 'sample', name: '本物の会社', login: { email: true, google: true, line: false }, signup: false });
     expect(r.headers.get('Cache-Control')).toBe('no-store');
     // 画面の枠の組み立て用: 使えるページの並び・メンバー証の対象・メンバー自身の LINE 連携(チャネル未設定なら出さない)
-    expect(r.body.site.pages).toEqual([{ id: PAGE, slug: 'app10', name: 'ご契約' }]);
+    expect(r.body.site.pages).toEqual([{ id: PAGE, slug: 'app10', name: 'ご契約', signup: false }]);
     expect(r.body.site.card).toBeNull();
     expect(r.body.site.lineSelfLink).toBe(false);
     db.sqlite.prepare('UPDATE sites SET settings = ? WHERE id = ?').run(JSON.stringify({ ...SITE_SETTINGS, card: { enabled: true, page: PAGE, field: 'メール', fields: [], name: '会員証' } }), SITE);

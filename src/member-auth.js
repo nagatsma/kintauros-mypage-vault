@@ -107,7 +107,9 @@ export const signupCapable = (p, ident) => {
   return asIdent(ident).kind === 'line' ? !!(s.line && s.line.field) : !!(s.member.field && !s.member.table);
 };
 export const signupPageFor = (site, pages, entry, ident) => (entry && signupCapable(entry, ident) ? entry : pages.find((p) => signupCapable(p, ident)) || null);
-export const siteHasSignup = (pages) => pages.some((p) => usablePage(p) && p.settings.signup && p.settings.signup.enabled && !!p.add_token_enc && !p.add_token_error);
+// 本人確認の手段を問わず、自己登録を受け付けているページか(画面側が「登録する」の入口を出すかどうかに使う)
+export const pageHasSignup = (p) => usablePage(p) && !!(p.settings.signup && p.settings.signup.enabled) && !!p.add_token_enc && !p.add_token_error;
+export const siteHasSignup = (pages) => pages.some(pageHasSignup);
 
 // ---- サイトの表示用の情報(ログイン画面の組み立て用。秘密は含まない)----
 export const lineConfigured = (site) => !!(site.settings.line && site.settings.line.enabled && site.line_channel_id && site.line_secret_enc && site.dek_wrapped);
@@ -122,7 +124,7 @@ export async function siteInfo(env, site, { cardOf } = {}) {
     ok: true,
     site: {
       slug: site.slug, name: st.name || '', themeColor: st.themeColor, contact: st.contact || '', privacyUrl: st.privacyUrl || '', lang: st.lang || 'ja', trial: site.license_status === 'trial', login: loginMethods(env, site), signup: siteHasSignup(pages),
-      pages: orderPages(site, pages).filter(usablePage).map((p) => ({ id: p.id, slug: p.slug, name: p.settings.name || '' })),
+      pages: orderPages(site, pages).filter(usablePage).map((p) => ({ id: p.id, slug: p.slug, name: p.settings.name || '', signup: pageHasSignup(p) })),
       card: cardOf ? cardOf(site, pages) : null,
       lineSelfLink: lineConfigured(site) && !!(st.line && st.line.selfLink),
     },
@@ -146,17 +148,18 @@ export async function completeLogin(env, site, ctx, { ident, method, pageIds, ne
 }
 // su = 新規登録の入口から来た(§19)
 //   ログインの入口: レコードがあればログイン / 無ければ no_pages(新規登録への案内だけ)
-//   新規登録の入口: レコードが無ければ自己登録のトークン(signup)/ 既にあればレコードを作らずログインして「既に登録されています」
+//   新規登録の入口: 登録先のページ(戻り先のページ。無ければ自己登録できる最初のページ)に本人のレコードが無ければ自己登録のトークン(signup)。
+//     ほかのページにレコードがあっても登録へ進める(「登録済み」はページごとに見る。同じドメインの別のアプリで本人確認済みの人が登録できなくなるため)
+//     登録先に既にあればレコードを作らずログインして「既に登録されています」
+//   登録先が入口の「あわせて確認するページ」の外にあることがあるので、ほかのページで入れた人は登録先を改めて確かめる(登録の直前にも /v1/signup が確かめる)
 export async function afterVerify(env, site, ctx, { ident, method, pageIds, pages, next, su }) {
   const i = asIdent(ident);
-  if (!pageIds.length) {
-    const sp = su ? signupPageFor(site, pages, entryPageOf(pages, next), i) : null;
-    if (sp) {
-      const token = await signSignup(env, { s: site.id, k: i.kind, e: i.id, n: i.name || '', p: sp.id, next: safeNext(next), exp: Date.now() + SIGNUP_TOKEN_TTL_MS });
-      return out(200, { ok: true, result: 'signup', signup: { token, page: sp.slug }, member: member(i), method, next: safeNext(next) });
-    }
-    return out(200, { ok: true, result: 'no_pages', member: member(i), method, signupAvailable: !su && siteHasSignup(pages), next: safeNext(next) });
+  const sp = su ? signupPageFor(site, pages, entryPageOf(pages, next), i) : null;
+  if (sp && !pageIds.includes(sp.id) && !(pageIds.length && (await checkMembership(env, site, [sp], i)).length)) {
+    const token = await signSignup(env, { s: site.id, k: i.kind, e: i.id, n: i.name || '', p: sp.id, next: safeNext(next), exp: Date.now() + SIGNUP_TOKEN_TTL_MS });
+    return out(200, { ok: true, result: 'signup', signup: { token, page: sp.slug }, member: member(i), method, next: safeNext(next) });
   }
+  if (!pageIds.length) return out(200, { ok: true, result: 'no_pages', member: member(i), method, signupAvailable: !su && siteHasSignup(pages), next: safeNext(next) });
   return completeLogin(env, site, ctx, { ident: i, method, pageIds, next: su ? '/?already=1' : next, pages });
 }
 
